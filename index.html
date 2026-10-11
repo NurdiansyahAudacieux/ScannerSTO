@@ -197,14 +197,42 @@
     // Parse URL parameters
     const params = new URLSearchParams(window.location.search);
     const field = params.get('field') || 'unknown';
-    const patternStr = params.get('pattern') || '.*';
-    const hint = params.get('hint') || '';
+    const urlHint = params.get('hint') || '';
     const fieldId = params.get('fieldId') || '';
-    const pattern = new RegExp(patternStr);
+
+    // ===== Pola tambahan per field =====
+    // Barcode dianggap VALID jika cocok dengan SALAH SATU pola
+    // (pola dari URL + pola tambahan di bawah ini).
+    // Untuk menambah pola baru, cukup tambahkan ke array-nya.
+    const EXTRA_PATTERNS = {
+      serialNumber: [
+        '^MT[A-Za-z0-9]+$',   // Pola 1: diawali "MT"
+        '^60[A-Za-z0-9]+$'    // Pola 2: diawali "60"
+      ]
+    };
+    const FIELD_HINTS = {
+      serialNumber: 'Harus diawali "MT" atau "60" diikuti huruf/angka'
+    };
+
+    // Kumpulkan semua pola: ?pattern=... (boleh lebih dari satu) + pola tambahan
+    const patternList = [...params.getAll('pattern'), ...(EXTRA_PATTERNS[field] || [])]
+      .filter((v, i, arr) => v && arr.indexOf(v) === i);
+
+    const patterns = patternList.map(str => {
+      try { return new RegExp(str); }
+      catch (e) { console.warn('Regex tidak valid diabaikan:', str); return null; }
+    }).filter(Boolean);
+
+    // Objek "pattern" tetap punya method test() agar kode lain tidak perlu diubah
+    const pattern = {
+      test: (val) => patterns.length === 0 || patterns.some(re => re.test(val))
+    };
+
+    const hint = FIELD_HINTS[field] || urlHint;
 
     // UI labels
     const labels = {
-      serialNumber: 'Serial Number (MT + huruf/angka)',
+      serialNumber: 'Serial Number (MT / 60 + huruf/angka)',
       spxId: 'SPX-ID (ID-SPXID-...)'
     };
     document.getElementById('fieldLabel').textContent = labels[field] || field;
@@ -308,7 +336,7 @@
             } else {
               // Show scanned value but format wrong
               document.getElementById('statusMsg').className = 'status error';
-              document.getElementById('statusMsg').textContent = 'Format tidak sesuai: ' + value;
+              document.getElementById('statusMsg').textContent = 'Format tidak sesuai: ' + value + (hint ? ' (' + hint + ')' : '');
               document.getElementById('statusMsg').style.display = 'block';
             }
           },
